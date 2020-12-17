@@ -12,6 +12,8 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <stdio.h>
+#include <string.h>
 
 #include "vector2.h"
 
@@ -40,6 +42,12 @@ struct Particle
 					((float)rand()) / RAND_MAX * fieldHeight - fieldHalfHeight)
 		, Velocity( 0.f, 0.f )
 		, Mass ( ((float)rand()) / RAND_MAX * maxBodyMassVariance + minBodyMass )
+	{ }
+
+	Particle(float x, float y, float m) 
+		: Position(x, y)
+		, Velocity(0.f, 0.f)
+		, Mass(m)
 	{ }
 };
 
@@ -121,25 +129,125 @@ void PersistPositions(const std::string &p_strFilename, std::vector<Particle> &p
 
 int main(int argc, char **argv)
 {
-	const int particleCount = 1024;
-	const int maxIteration = 1000;
-	const float deltaT = 0.01f;
-	const float gTerm = 20.f;
+	// Set default values
+	bool output = true;
+	char *inputFile;
+	int particleCount = 1024;
+	int maxIteration = 1000;
+	float deltaT = 0.005f;
+	float gTerm = 1.f;
 
+	// Parse command line arguments
+	for(int i=1; i<argc; ++i)
+    {
+		if(strcmp("-f",argv[i]) == 0){
+			inputFile = argv[i+1];
+		}
+		else if(strcmp("-o",argv[i]) == 0){
+			if(strcmp("false",argv[i+1]) == 0){
+				output = false;
+			}
+		}
+		else if(strcmp("-b",argv[i]) == 0){
+			int len;
+			if(sscanf(argv[i+1], "%d %n", &particleCount, &len) != 1)
+			{
+				std::cerr << "Invalid argument: " << argv[i+1] << ". Using default value 1024 instead" << std::endl;
+			}
+		}
+		else if(strcmp("-g",argv[i]) == 0){
+			int len;
+			if(sscanf(argv[i+1], "%f %n", &gTerm, &len) != 1)
+			{
+				std::cerr << "Invalid argument: " << argv[i+1] << ". Using default value 1.0 instead" << std::endl;
+			}
+		}
+		else if(strcmp("-i",argv[i]) == 0){
+			int len;
+			if(sscanf(argv[i+1], "%d %n", &maxIteration, &len) != 1)
+			{
+				std::cerr << "Invalid argument: " << argv[i+1] << ". Using default value 1000 instead" << std::endl;
+			}
+		}
+		else if(strcmp("-d",argv[i]) == 0){
+			int len;
+			if(sscanf(argv[i+1], "%f %n", &deltaT, &len) != 1)
+			{
+				std::cerr << "Invalid argument: " << argv[i+1] << ". Using default value 0.005 instead" << std::endl;
+			}
+		}
+    }
+	
 	std::stringstream fileOutput;
 	std::vector<Particle> bodies;
 
-	for (int bodyIndex = 0; bodyIndex < particleCount; ++bodyIndex)
-		bodies.push_back(Particle());
+	std::ifstream infile(inputFile);
+	// If file does not exist then set flag to use random values
+	if(infile.is_open())
+	{	
+		std::cout << "Input File:" << inputFile << std::endl;
+		if(!output) std::cout << "Output Suppressed" << std::endl;
+		std::cout << "Gravity: " << gTerm << std::endl;
+		std::cout << "Iterations: " << maxIteration << std::endl;
+		std::cout << "Simulation Time Step: " << deltaT << std::endl;
+
+		// Get particle mass, x Position, y Position from file
+		std::string line;
+		int i = 0;
+		while (std::getline(infile, line))
+		{	
+			std::istringstream ss(line);
+			std::string token;
+			float mass;
+			float xPos;
+			float yPos;
+			int j = 0;
+			while (std::getline(ss, token, ','))
+			{
+			    switch(j)
+				{
+					case(0):
+						mass = stof(token);
+						break;
+					case(1):
+						xPos = stof(token);
+						break;
+					case(2):
+						yPos = stof(token);
+						break;
+				}
+				j++;
+			}
+			bodies.push_back(Particle(mass,xPos,yPos));
+			i++;
+		}
+		std::cout << "Particles: " << i << std::endl;
+	} 
+	else
+	{
+		std::cout << "No input file. Initialising random values instead." << std::endl;
+		if(!output) std::cout << "Output Suppressed" << std::endl;
+		std::cout << "Gravity: " << gTerm << std::endl;
+		std::cout << "Iterations: " << maxIteration << std::endl;
+		std::cout << "Simulation Time Step: " << deltaT << std::endl;
+		std::cout << "Particles: " << particleCount << std::endl;
+
+		// Initialise particles with random values
+		for (int bodyIndex = 0; bodyIndex < particleCount; ++bodyIndex)
+			bodies.push_back(Particle());
+	}
 			
 	for (int iteration = 0; iteration < maxIteration; ++iteration)
 	{
 		ComputeForces(bodies, gTerm, deltaT);
 		MoveBodies(bodies, deltaT);
 		
-		fileOutput.str(std::string());
-		fileOutput << "nbody_" << iteration << ".txt";
-		PersistPositions(fileOutput.str(), bodies);
+		if(output == true)
+		{
+			fileOutput.str(std::string());
+			fileOutput << "/home/martin/Documents/HPCAssignment/Output/nbody_" << iteration << ".txt";
+			PersistPositions(fileOutput.str(), bodies);
+		}
 	}
 
 	return 0;
