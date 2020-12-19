@@ -26,7 +26,9 @@ public:
 		: X(p_fValue), Y(p_fValue) {}
 
 	Vector2(float p_x, float p_y)
-		: X(p_x), Y(p_y) {}
+		: X(p_x), Y(p_y) {
+			std::cout << "TEST" << std::endl;
+		}
 
 	Vector2(const Vector2 &p_vector)
 		: X(p_vector.X), Y(p_vector.Y) {}

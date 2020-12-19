@@ -35,7 +35,7 @@ struct Particle
 {
 	Vector2 Position;
 	Vector2 Velocity;
-	float	Mass;
+	float Mass;
 	
 	Particle(void) 
 		: Position( ((float)rand()) / RAND_MAX * fieldWidth - fieldHalfWidth,
@@ -44,10 +44,10 @@ struct Particle
 		, Mass ( ((float)rand()) / RAND_MAX * maxBodyMassVariance + minBodyMass )
 	{ }
 
-	Particle(float x, float y, float m) 
-		: Position(x, y)
-		, Velocity(0.f, 0.f)
-		, Mass(m)
+	Particle(float m, float x, float y) 
+		: Position( x, y )
+		, Velocity( 0.f, 0.f )
+		, Mass( m )
 	{ }
 };
 
