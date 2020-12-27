@@ -14,6 +14,8 @@
 #include <vector>
 #include <stdio.h>
 #include <string.h>
+#include <omp.h>
+#include <sys/time.h>
 
 #include "vector2.h"
 
@@ -54,47 +56,70 @@ struct Particle
 /*
  * Compute forces of particles exerted on one another
  */
-void ComputeForces(std::vector<Particle> &p_bodies, float p_gravitationalTerm, float p_deltaT)
+void ComputeForcesParallel(std::vector<Particle> &p_bodies, float p_gravitationalTerm, float p_deltaT)
 {
-	Vector2 direction, force, acceleration;
-
-	float distance;
-
-	for (size_t j = 0; j < p_bodies.size(); ++j)
+	#pragma omp parallel
 	{
-		Particle &p1 = p_bodies[j];
-	
-		force = 0.f, acceleration = 0.f;
-	
-		for (size_t k = 0; k < p_bodies.size(); ++k)
+		//thread private
+		Vector2 force, acceleration;
+		
+		#pragma omp for schedule(dynamic)
+		for (size_t j = 0; j < p_bodies.size(); ++j)
 		{
-			if (k == j) continue;
+			Particle &p1 = p_bodies[j];
 		
-			Particle &p2 = p_bodies[k];
+			force = 0.f, acceleration = 0.f;
+
+			// #pragma omp declare reduction (addForce:Vector2:omp_out += omp_in) initializer (omp_priv=omp_orig)
+			// #pragma omp parallel for private(direction,distance) reduction(addForce:force)
+			// for (size_t k = 0; k < p_bodies.size(); ++k)
+			// {
+			// 	if (k == j) continue;
 			
-			// Compute direction vector
-			direction = p2.Position - p1.Position;
-			
-			// Limit distance term to avoid singularities
-			distance = std::max<float>( 0.5f * (p2.Mass + p1.Mass), fabs(direction.Length()) );
-			
-			// Accumulate force
-			force += direction / (distance * distance * distance) * p2.Mass; 
-		}
+			// 	Particle &p2 = p_bodies[k];
 				
-		// Compute acceleration for body 
-		acceleration = force * p_gravitationalTerm;
-		
-		// Integrate velocity (m/s)
-		p1.Velocity += acceleration * p_deltaT;
+			// 	// Compute direction vector
+			// 	direction = p2.Position - p1.Position;
+				
+			// 	// Limit distance term to avoid singularities
+			// 	distance = std::max<float>( 0.5f * (p2.Mass + p1.Mass), fabs(direction.Length()) );
+				
+			// 	// Accumulate force
+			// 	force += direction / (distance * distance * distance) * p2.Mass; 
+			// }
+			
+			for (size_t k = 0; k < p_bodies.size(); ++k)
+			{
+				if (k == j) continue;
+			
+				Particle &p2 = p_bodies[k];
+				
+				// Compute direction vector
+				Vector2 direction = p2.Position - p1.Position;
+				
+				// Limit distance term to avoid singularities
+				float distance = std::max<float>( 0.5f * (p2.Mass + p1.Mass), fabs(direction.Length()) );
+				
+				// Accumulate force
+				force += direction / (distance * distance * distance) * p2.Mass; 
+			}
+
+			// Compute acceleration for body 
+			acceleration = force * p_gravitationalTerm;
+
+			// Integrate velocity (m/s)
+			p1.Velocity += acceleration * p_deltaT;
+		}
 	}
 }
 
 /*
  * Update particle positions
  */
-void MoveBodies(std::vector<Particle> &p_bodies, float p_deltaT)
-{
+void MoveBodiesParallel(std::vector<Particle> &p_bodies, float p_deltaT)
+{	
+	
+	#pragma omp parallel for
 	for (size_t j = 0; j < p_bodies.size(); ++j)
 	{
 		p_bodies[j].Position += p_bodies[j].Velocity * p_deltaT;
@@ -127,7 +152,9 @@ void PersistPositions(const std::string &p_strFilename, std::vector<Particle> &p
 }
 
 int main(int argc, char **argv)
-{
+{	
+	omp_set_num_threads(omp_get_max_threads());
+
 	// Set default values
 	bool output = true;
 	char *inputFile;
@@ -193,6 +220,7 @@ int main(int argc, char **argv)
 		// Get particle mass, x Position, y Position from file
 		std::string line;
 		int i = 0;
+
 		while (std::getline(infile, line))
 		{	
 			std::istringstream ss(line);
@@ -231,24 +259,36 @@ int main(int argc, char **argv)
 		std::cout << "Iterations: " << maxIteration << std::endl;
 		std::cout << "Simulation Time Step: " << deltaT << std::endl;
 		std::cout << "Particles: " << particleCount << std::endl;
-
+		
 		// Initialise particles with random values
 		for (int bodyIndex = 0; bodyIndex < particleCount; ++bodyIndex)
+		{
 			bodies.push_back(Particle());
+		}
 	}
-			
+
 	for (int iteration = 0; iteration < maxIteration; ++iteration)
-	{
-		ComputeForces(bodies, gTerm, deltaT);
-		MoveBodies(bodies, deltaT);
+	{	
+		// Start timing
+		struct timeval start, end;
+		long mtime, seconds, useconds;
+		gettimeofday(&start, NULL);
+
+		ComputeForcesParallel(bodies, gTerm, deltaT);
+		MoveBodiesParallel(bodies, deltaT);
 		
 		if(output == true)
 		{
 			fileOutput.str(std::string());
-			fileOutput << "/home/martin/Documents/HPCAssignment/Output/nbody_" << iteration << ".txt";
+			fileOutput << "/home/martin/Documents/HPCAssignment/OutputOMP/nbody_" << iteration << ".txt";
 			PersistPositions(fileOutput.str(), bodies);
 		}
-	}
 
-	return 0;
+		// Stop timing
+		gettimeofday(&end, NULL);
+		seconds  = end.tv_sec  - start.tv_sec;
+		useconds = end.tv_usec - start.tv_usec;
+		mtime = ((seconds) * 1000 + useconds / 1000.0) + 0.5;
+		printf("Full Iteration: %ld milliseconds\n", mtime);
+	}
 }
